@@ -176,11 +176,11 @@ typedef enum filewatch_update_t
 typedef void (filewatch_callback_t)(filewatch_update_t change, const char* virtual_path, void* udata);
 
 /**
- * Start watching a specific directory. Does not recursively register sub-directories. The user is
+ * Start watching a specific directory. Takes an integer to specify whether to watch recursively. The user is
  * expected to provide a valid callback to `cb`. `virtual_path` is directory within an `assetsys` mount.
  * Returns 0 on failure, 1 on success.
  */
-int filewatch_start_watching(filewatch_t* filewatch, const char* virtual_path, filewatch_callback_t* cb, void* udata);
+int filewatch_start_watching(filewatch_t* filewatch, const char* virtual_path, filewatch_callback_t* cb, void* udata, int recursive);
 
 /**
  * Stop watching a specific directory and cancel any queue'd up notifications.
@@ -2358,7 +2358,9 @@ void filewatch_virtual_path_to_actual_path_internal(filewatch_t* filewatch, cons
 	filewatch_path_concat_internal(mount_path, offset_virtual_path, actual_path, actual_path_capacity);
 }
 
-int filewatch_start_watching(filewatch_t* filewatch, const char* virtual_path, filewatch_callback_t* cb, void* udata)
+int filewatch_add_entries(filewatch_t *filewatch, filewatch_watched_dir_internal_t *watch, char *actual_path, int recursive);
+
+int filewatch_start_watching(filewatch_t* filewatch, const char* virtual_path, filewatch_callback_t* cb, void* udata, int recursive)
 {
 	filewatch_watched_dir_internal_t* watch;
 	int success;
@@ -2382,37 +2384,54 @@ int filewatch_start_watching(filewatch_t* filewatch, const char* virtual_path, f
 		path.virtual_id = virtual_id;
 		watch->dir_path = path;
 
-		cf_dir_t dir;
-		success = cf_dir_open(&dir, actual_path);
-		CUTE_FILEWATCH_CHECK(success, "`virtual_path` is not a valid directory.");
+    CUTE_FILEWATCH_CHECK(filewatch_add_entries(filewatch, watch, actual_path, recursive), "Couldn't watch entry recursively");
+  }
 
-		while (dir.has_next)
-		{
-			cf_file_t file;
+	return 1;
+
+cute_filewatch_err:
+	return 0;
+}
+
+int filewatch_add_entries(filewatch_t *filewatch, filewatch_watched_dir_internal_t *watch, char *actual_path, int recursive)
+{
+    cf_dir_t dir;
+    int success = cf_dir_open(&dir, actual_path);
+    CUTE_FILEWATCH_CHECK(success, "`virtual_path`, is not a valid directory");
+
+    while(dir.has_next)
+    {
+ 			cf_file_t file;
 			cf_read_file(&dir, &file);
 			STRPOOL_EMBEDDED_U64 name_id = CUTE_FILEWATCH_INJECT(filewatch, file.name, CUTE_FILEWATCH_STRLEN(file.name));
 			filewatch_path_t file_path = filewatch_build_path_internal(filewatch, watch, file.path, file.name);
 
 			if (!file.is_dir && file.is_reg)
 			{
-				filewatch_add_entry_internal(watch, file_path, name_id, file.path, 0);
+				filewatch_add_entry_internal(watch, file_path, file_path.actual_id, file.path, 0);
 			}
 
 			else if (file.is_dir && file.name[0] != '.')
 			{
-				filewatch_add_entry_internal(watch, file_path, name_id, file.path, 1);
+				filewatch_add_entry_internal(watch, file_path, file_path.actual_id, file.path, 1);
+        if(recursive)
+        {
+            const char *virtual_path = CUTE_FILEWATCH_CSTR(filewatch, file_path.virtual_id);
+            const char *actual_path = CUTE_FILEWATCH_CSTR(filewatch, file_path.actual_id);
+            filewatch_mount(filewatch, actual_path, virtual_path);
+            filewatch_start_watching(filewatch, virtual_path, watch->cb, watch->udata, recursive);
+        }
 			}
 
 			cf_dir_next(&dir);
-		}
+    }
 
-		cf_dir_close(&dir);
-	}
+    cf_dir_close(&dir);
 
-	return 1;
+    return 1;
 
 cute_filewatch_err:
-	return 0;
+    return 0;
 }
 
 void filewatch_stop_watching(filewatch_t* filewatch, const char* virtual_path)
