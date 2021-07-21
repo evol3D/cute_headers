@@ -2290,7 +2290,7 @@ int filewatch_update(filewatch_t* filewatch)
 				else
 				{
 					filewatch_add_entry_internal(watch, path, name_id, file.path, 0);
-					filewatch_add_notification_internal(filewatch, watch, path, FILEWATCH_FILE_ADDED);
+					/* filewatch_add_notification_internal(filewatch, watch, path, FILEWATCH_FILE_ADDED); */
 					CUTE_FILEWATCH_CHECK(remount_count < FILEWATCH_MAX_MOUNTS, "Tried to remount too many mounts in one update. Try using less mounts, or increase `FILEWATCH_MAX_MOUNTS`.");
 					remount_paths[remount_count++] = watch_path;
 				}
@@ -2302,7 +2302,7 @@ int filewatch_update(filewatch_t* filewatch)
 				if (!entry)
 				{
 					filewatch_add_entry_internal(watch, path, name_id, file.path, 1);
-					filewatch_add_notification_internal(filewatch, watch, path, FILEWATCH_DIR_ADDED);
+					/* filewatch_add_notification_internal(filewatch, watch, path, FILEWATCH_DIR_ADDED); */
 					CUTE_FILEWATCH_CHECK(remount_count < FILEWATCH_MAX_MOUNTS, "Tried to remount too many mounts in one update. Try using less mounts, or increase `FILEWATCH_MAX_MOUNTS`.");
 					remount_paths[remount_count++] = watch_path;
 				}
